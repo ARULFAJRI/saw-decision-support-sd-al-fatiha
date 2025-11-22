@@ -1,14 +1,1 @@
-flowchart TD
-  Start[Landing Page]
-  SignUpPage[Sign Up Page]
-  SignInPage[Sign In Page]
-  AuthAPI[Authentication API Endpoint]
-  DashboardPage[Dashboard Page]
-  Start -->|Select Sign Up| SignUpPage
-  Start -->|Select Sign In| SignInPage
-  SignUpPage -->|Submit Credentials| AuthAPI
-  SignInPage -->|Submit Credentials| AuthAPI
-  AuthAPI -->|Success| DashboardPage
-  AuthAPI -->|Error| SignUpPage
-  AuthAPI -->|Error| SignInPage
-  DashboardPage -->|Click Logout| Start
+flowchart TD\n    Start[Start] --> LoginPage[Login Page]\n    LoginPage --> AuthLogic[useAuth Hook]\n    AuthLogic -->|success| MainLayout[Main Layout]\n    AuthLogic -->|failure| LoginPage\n    MainLayout --> Sidebar[Sidebar]\n    Sidebar --> Dashboard[Dashboard]\n    Sidebar --> StudentMgmt[Student Management]\n    Sidebar --> CriteriaMgmt[Criteria Management]\n    Sidebar --> Evaluation[Evaluation]\n    Sidebar --> Reports[Reports]\n    Dashboard --> Storage[services/storage]\n    StudentMgmt --> Storage\n    CriteriaMgmt --> Storage\n    Evaluation --> SAW[utils/saw Algorithm]\n    SAW --> Storage\n    Reports --> PDFExport[jsPDF Export]\n    Reports --> ExcelExport[XLSX Export]\n    MainLayout --> Logout[Logout]\n    Logout --> LoginPage

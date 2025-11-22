@@ -1,179 +1,199 @@
-# Backend Structure Document
+# Backend Structure Document for Decision Support System (DSS)
 
-This document outlines the backend architecture, hosting, and infrastructure for the **codeguide-starter** project. It uses plain language so anyone can understand how the backend is set up and how it supports the application.
+This document outlines the backend architecture, data management, APIs, hosting, infrastructure, security, and maintenance plans for the Decision Support System tailored for SD Islam Al Fatiha. The goal is to provide a clear overview so that any stakeholder—technical or not—can understand how the backend is organized and why these choices were made.
 
 ## 1. Backend Architecture
 
-- **Framework and Design Pattern**
-  - We use **Next.js API Routes** to handle all server-side logic. These routes live alongside the frontend code in the same repository, making development and deployment simpler.
-  - The backend follows a **layered pattern**:
-    1. **API Layer**: Receives requests (login, registration, data fetch).  
-    2. **Service Layer**: Contains the core business logic (user validation, password hashing).  
-    3. **Data Access Layer**: Talks to the database via a simple ORM (e.g., Prisma or TypeORM).
+**Overview**  
+We will use a Node.js server with Express (or a similar HTTP framework) written in TypeScript. The code follows a layered pattern to separate concerns:  
 
-- **Scalability**
-  - Stateless API routes can scale horizontally—new instances can spin up on demand.  
-  - We can add caching or a message queue (e.g., Redis or RabbitMQ) without changing the core code.
+- **Controllers (API layer):** Handle incoming HTTP requests and send responses.  
+- **Services (Business logic):** Contain the core decision-making algorithm (SAW) and other processing.  
+- **Data Access (Repository) layer:** Interact with the database through Drizzle ORM.  
+- **Middleware:** Manage authentication, error handling, logging, and request parsing.
 
-- **Maintainability**
-  - Code for each feature is grouped by route (authentication, dashboard).  
-  - A service layer separates complex logic from request handling.
+**Design Patterns & Frameworks**  
+- MVC-inspired layering for clarity and maintainability.  
+- Dependency injection for services and repositories (e.g., using `tsyringe` or `InversifyJS`).  
+- Drizzle ORM for type-safe database interactions.  
 
-- **Performance**
-  - Lightweight Node.js handlers keep response times low.  
-  - Future use of database connection pooling and Redis for caching repeated queries.
+**Scalability**  
+- The server is stateless, allowing horizontal scaling behind a load balancer.  
+- Database connection pooling ensures efficient use of resources under load.  
+
+**Maintainability**  
+- TypeScript provides type safety across layers.  
+- Clear folder structure (`controllers/`, `services/`, `repositories/`, `models/`, `middlewares/`).  
+- Unit tests for business logic (`utils/saw.ts`) using Vitest or Jest.
+
+**Performance**  
+- Caching frequent queries (e.g., student lists) with Redis.  
+- Database indexes on foreign keys and frequently filtered columns.  
+- GZIP compression and HTTP/2 support on the API.
 
 ## 2. Database Management
 
-- **Database Choice**
-  - We recommend **PostgreSQL** for structured data and reliable transactions.  
-  - In-memory caching can be added later with **Redis** for session tokens or frequently read data.
+**Technology Choice**  
+- **Type:** Relational (SQL)  
+- **System:** PostgreSQL  
+- **ORM:** Drizzle ORM (TypeScript-first, lightweight)
 
-- **Data Storage and Access**
-  - Use an ORM like **Prisma** or **TypeORM** to map JavaScript/TypeScript objects to database tables.
-  - Connection pooling ensures efficient use of database connections under load.
-  - Migrations track schema changes over time, keeping development, staging, and production in sync.
+**Data Structure & Access**  
+- Data is organized in normalized tables (Users, Students, Criteria, Evaluations, Results).  
+- Repositories expose basic CRUD methods: `create`, `findAll`, `findById`, `update`, `delete`.  
+- All queries use parameterized statements to prevent SQL injection.  
 
-- **Data Practices**
-  - Passwords are never stored in plain text—they are salted and hashed with **bcrypt** before saving.
-  - All outgoing data is typed and validated to prevent malformed records.
+**Data Management Practices**  
+- Regular backups via automated RDS snapshots (if hosted on AWS).  
+- Migrations managed with Drizzle CLI.  
+- Connection pooling to optimize performance.
 
 ## 3. Database Schema
 
-### Human-Readable Format
+Below is a human-readable overview and corresponding PostgreSQL schema.
 
-- **Users**
-  - **id**: Unique identifier  
-  - **email**: User’s email address (unique)  
-  - **password_hash**: Securely hashed password  
-  - **created_at**: Account creation timestamp
+**Tables and Key Columns**  
+- **Users**: id, name, email, password_hash, role (Admin/Guru), created_at, updated_at  
+- **Students**: id, full_name, class, created_at, updated_at  
+- **Criteria**: id, name, weight (numeric), created_at, updated_at  
+- **Evaluations**: id, student_id (FK), evaluated_at (timestamp), evaluator_id (FK), created_at  
+- **EvaluationResults**: id, evaluation_id (FK), criteria_id (FK), raw_score, normalized_score, weighted_score
 
-- **Sessions**
-  - **id**: Unique session record  
-  - **user_id**: Links to a user  
-  - **token**: Random string for authentication  
-  - **expires_at**: When the token stops working  
-  - **created_at**: When the session was created
-
-- **DashboardItems** *(optional for dynamic data)*
-  - **id**: Unique record  
-  - **title**: Item title  
-  - **content**: Item details  
-  - **created_at**: When the item was added
-
-### SQL Schema (PostgreSQL)
+**PostgreSQL Schema**  
 ```sql
 -- Users table
 CREATE TABLE users (
-  id SERIAL PRIMARY KEY,
-  email VARCHAR(255) UNIQUE NOT NULL,
-  password_hash VARCHAR(255) NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('Admin','Guru')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- Sessions table
-CREATE TABLE sessions (
-  id SERIAL PRIMARY KEY,
-  user_id INT REFERENCES users(id) ON DELETE CASCADE,
-  token VARCHAR(255) UNIQUE NOT NULL,
-  expires_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now()
+-- Students table
+CREATE TABLE students (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  full_name TEXT NOT NULL,
+  class TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- Dashboard items table
-CREATE TABLE dashboard_items (
-  id SERIAL PRIMARY KEY,
-  title TEXT NOT NULL,
-  content TEXT,
-  created_at TIMESTAMPTZ DEFAULT now()
+-- Criteria table
+CREATE TABLE criteria (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  weight NUMERIC NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Evaluations table
+CREATE TABLE evaluations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  student_id UUID REFERENCES students(id) ON DELETE CASCADE,
+  evaluator_id UUID REFERENCES users(id),
+  evaluated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- EvaluationResults table
+CREATE TABLE evaluation_results (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  evaluation_id UUID REFERENCES evaluations(id) ON DELETE CASCADE,
+  criteria_id UUID REFERENCES criteria(id),
+  raw_score NUMERIC NOT NULL,
+  normalized_score NUMERIC,
+  weighted_score NUMERIC,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 ```  
 
 ## 4. API Design and Endpoints
 
-- **Approach**: We follow a **RESTful** style, grouping related endpoints under `/api` directories.
+We follow RESTful principles with JSON payloads. All endpoints are prefixed with `/api`.
 
-- **Key Endpoints**
-  - `POST /api/auth/register`  
-    • Accepts `{ email, password }`  
-    • Creates a new user and issues a session token  
-  - `POST /api/auth/login`  
-    • Accepts `{ email, password }`  
-    • Verifies credentials and returns a session token  
-  - `POST /api/auth/logout`  
-    • Invalidates the session token on the server  
-  - `GET /api/dashboard/data`  
-    • Requires a valid session  
-    • Returns user-specific data or dashboard items  
+**Authentication**  
+- POST `/api/auth/login` – Validate credentials, return JWT token.  
+- POST `/api/auth/logout` – Invalidate token (optional) or rely on client token deletion.  
+- GET `/api/auth/me` – Retrieve current user info from JWT.
 
-- **Communication**
-  - Frontend sends JSON requests; backend replies with JSON and appropriate HTTP status codes.  
-  - Protected routes check for a valid session token (in cookies or Authorization header).
+**Students**  
+- GET `/api/students` – List all students.  
+- GET `/api/students/:id` – Get student details.  
+- POST `/api/students` – Create new student.  
+- PUT `/api/students/:id` – Update student.  
+- DELETE `/api/students/:id` – Remove student.
+
+**Criteria**  
+- GET `/api/criteria`  
+- POST `/api/criteria`  
+- PUT `/api/criteria/:id`  
+- DELETE `/api/criteria/:id`
+
+**Evaluations**  
+- POST `/api/evaluations` – Submit a new evaluation (student + scores).  
+- GET `/api/evaluations` – List evaluations with filters (by student, date).
+
+**Reports & Exports**  
+- GET `/api/reports/summary` – JSON summary of latest rankings.  
+- GET `/api/reports/pdf` – Generate and return PDF.  
+- GET `/api/reports/excel` – Generate and return XLSX.
+
+Middleware enforces JWT validation and role-based access control on protected routes.
 
 ## 5. Hosting Solutions
 
-- **Cloud Provider**:  
-  - **Vercel** (recommended) offers seamless Next.js deployments, auto-scaling, and built-in CDN.  
-  - Alternatively, **Netlify** or any Node.js-capable host will work.
+We recommend a cloud-based, containerized deployment for reliability and easy scaling.
 
-- **Benefits**
-  - **Reliability**: Global servers and failover across regions.  
-  - **Scalability**: Auto-scale serverless functions based on traffic.  
-  - **Cost-Effectiveness**: Pay-per-use model means low cost for small projects.
+- **Containerization:** Docker images for API and background workers.  
+- **Orchestration:** AWS ECS/Fargate or Kubernetes (EKS/GKE).  
+- **Database Hosting:** AWS RDS with PostgreSQL (multi-AZ for failover).  
+- **Static Assets & CDN:** Frontend deployed to Vercel or Netlify; assets served via CloudFront or equivalent CDN.
+
+**Benefits**  
+- High availability with multi-AZ and auto-scaling.  
+- Pay-as-you-go pricing.  
+- Simplified deployments via CI/CD pipelines (GitHub Actions).
 
 ## 6. Infrastructure Components
 
-- **Load Balancer**
-  - Provided by the hosting platform—distributes API requests across function instances.
+- **Load Balancer:** AWS ALB or equivalent, distributing API traffic across containers.  
+- **Caching:** Redis cluster for session caching and query results.  
+- **CDN:** CloudFront for static assets, improving frontend performance globally.  
+- **Message Queue (optional):** RabbitMQ or AWS SQS for heavy tasks (e.g., report generation).  
+- **Storage:** S3 buckets for storing generated PDFs/Excel files if needed.
 
-- **CDN (Content Delivery Network)**
-  - Vercel’s global edge network caches static assets (CSS, JS, images) for faster page loads.
-
-- **Caching**
-  - **Redis** (optional) for session storage or caching dashboard queries to reduce database load.
-
-- **Object Storage**
-  - For file uploads or backups, integrate with AWS S3 or similar services.
-
-- **Message Queue**
-  - In future, use **RabbitMQ** or **Kafka** for background tasks (e.g., email notifications).
+Together, these components ensure low latency, fault tolerance, and a smooth user experience.
 
 ## 7. Security Measures
 
-- **Authentication & Authorization**
-  - Passwords hashed with **bcrypt** and salted.  
-  - Session tokens stored in secure, HttpOnly cookies or Authorization headers.  
-  - Protected endpoints verify tokens before proceeding.
-
-- **Data Encryption**
-  - **HTTPS/TLS** encrypts data in transit.  
-  - Database connections use SSL to encrypt data between the app and the database.
-
-- **Input Validation**
-  - Every incoming request is validated (e.g., valid email format, password length) to prevent SQL injection or other attacks.
-
-- **Web Security Best Practices**
-  - Enable **CORS** policies to limit allowed origins.  
-  - Use **CSRF tokens** or same-site cookies to prevent cross-site requests.  
-  - Set secure headers with **Helmet** or a similar middleware.
+- **Authentication:** JWT tokens signed with strong secret keys, short-lived with refresh tokens.  
+- **Authorization:** Role checks (Admin vs Guru) at the route/method level.  
+- **Password Security:** Bcrypt hashing with adequate work factor.  
+- **Data Encryption:** TLS/HTTPS for all network traffic; encryption at rest on RDS and S3.  
+- **Vulnerability Mitigation:** Helmet middleware, rate limiting (e.g., express-rate-limit), CORS configuration.  
+- **Secrets Management:** Environment variables stored in AWS Secrets Manager or Vault.
 
 ## 8. Monitoring and Maintenance
 
-- **Performance Monitoring**
-  - Integrate **Sentry** or **LogRocket** for real-time crash reporting and performance tracing.  
-  - Use Vercel’s built-in analytics to track request latencies and error rates.
-
-- **Logging**
-  - Structured logs (JSON) for all API requests and errors, shipped to a log management service like **Datadog** or **Logflare**.
-
-- **Health Checks**
-  - Define a `/health` endpoint that returns a 200 status if the service is up and the database is reachable.
-
-- **Maintenance Strategies**
-  - Automated migrations run on deploy to keep the database schema up to date.  
-  - Scheduled dependency audits and security scans (e.g., `npm audit`).
-  - Regular backups of the database (daily or weekly depending on usage).
+- **Logging:** Structured logs (JSON) collected by a centralized system (ELK stack or CloudWatch).  
+- **Metrics & Alerts:** Prometheus + Grafana or AWS CloudWatch Metrics with alarms on high error rates, CPU/memory spikes.  
+- **Error Tracking:** Sentry for capturing exceptions in API services.  
+- **Backup & Recovery:** Daily automated RDS snapshots; weekly full exports.  
+- **CI/CD:** GitHub Actions pipelines run tests, linting, and deploy on merge to main.
 
 ## 9. Conclusion and Overall Backend Summary
 
-The backend for **codeguide-starter** is built on Next.js API Routes and Node.js, paired with PostgreSQL for data and optional Redis for caching. It follows a clear layered architecture that keeps code easy to maintain and extend. With RESTful endpoints for authentication and data, secure practices like password hashing and HTTPS, and hosting on Vercel for scalability and global performance, this setup meets the project’s goals for a fast, secure, and developer-friendly foundation. Future enhancements—such as background job queues, advanced monitoring, or richer data models—can be added without disrupting the core structure.
+The backend for the Decision Support System is a modern, scalable, and secure Node.js service powered by TypeScript, Express, and PostgreSQL (via Drizzle ORM). It separates concerns into clear layers, exposes RESTful APIs for all key operations (authentication, student/criteria management, evaluations, and reporting), and is designed for a containerized cloud environment. Caching, load balancing, monitoring, and security best practices ensure reliable performance and data protection.
+
+This setup meets the project’s goals:
+
+- **Scalability:** Stateless services and auto-scaling clusters handle growth smoothly.  
+- **Maintainability:** Type safety, modular code, and clear architecture support easy updates.  
+- **Performance:** Caching, CDNs, and optimized queries deliver fast responses.  
+- **Security & Compliance:** Industry-standard measures protect user data and meet regulatory expectations.
+
+By following this document, the development and operations teams can align on the backend’s structure and deliver a robust Decision Support System for SD Islam Al Fatiha.

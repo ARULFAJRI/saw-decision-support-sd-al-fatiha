@@ -1,116 +1,137 @@
-# Security Guidelines for codeguide-starter
+# Security Guidelines for saw-decision-support-sd-al-fatiha
 
-This document defines mandatory security principles and implementation best practices tailored to the **codeguide-starter** repository. It aligns with Security-by-Design, Least Privilege, Defense-in-Depth, and other core security tenets. All sections reference specific areas of the codebase (e.g., `/app/api/auth/route.ts`, CSS files, environment configuration) to ensure practical guidance.
+This document describes the security requirements and best practices for the Decision Support System (DSS) application built with Vite, React, TypeScript, and LocalStorage. It codifies core security principles—Security by Design, Least Privilege, Defense in Depth, and Secure Defaults—into actionable guidelines to ensure a robust, maintainable, and secure solution.
 
 ---
 
-## 1. Security by Design
+## 1. Core Security Principles
 
-• Embed security from day one: review threat models whenever adding new features (e.g., new API routes, data fetching).
-• Apply “secure defaults” in Next.js configuration (`next.config.js`), enabling strict mode and disabling debug flags in production builds.
-• Maintain a security checklist in your PR template to confirm that each change has been reviewed against this guideline.
+• Security by Design: Embed security from planning through deployment.  
+• Least Privilege: Grant only the minimum permissions to each component.  
+• Defense in Depth: Layer controls so a single failure does not compromise the system.  
+• Input Validation & Output Encoding: Treat *all* external input as untrusted.  
+• Fail Securely: Avoid leaking sensitive info in errors; default to safe states.  
+• Secure Defaults: Ship with the most restrictive settings and open ports only as needed.  
 
 ---
 
 ## 2. Authentication & Access Control
 
-### 2.1 Password Storage
-- Use **bcrypt** (or Argon2) with a per-user salt to hash passwords in `/app/api/auth/route.ts`.
-- Enforce a strong password policy on both client and server: minimum 12 characters, mixed case, numbers, and symbols.
+### 2.1 Secure Client-Side Auth
+- useAuth.ts Hook:
+  • Validate credentials against a trusted source.  
+  • Never store plaintext passwords; if offline auth is required, store hashed values using Argon2 or bcrypt (via WebAssembly).  
+  • On login success, set a short-lived session token in LocalStorage (or, ideally, HttpOnly, Secure cookie).  
+  • Implement idle and absolute timeouts; clear storage on logout or expiration.  
+  
+- Role-Based Access Control (RBAC):
+  • Define roles (Admin, Guru) explicitly in your type system.  
+  • Enforce role checks server-side or in ProtectedRoute before rendering any sensitive view.  
+  
+- Multi-Factor Authentication (MFA) [Future Enhancement]:
+  • Integrate an OTP or TOTP mechanism for elevated privileges (e.g., changing criteria weights).  
 
-### 2.2 Session Management
-- Issue sessions via Secure, HttpOnly, SameSite=strict cookies. Do **not** expose tokens to JavaScript.
-- Implement absolute and idle timeouts. For example, invalidate sessions after 30 minutes of inactivity.
-- Protect against session fixation by regenerating session IDs after authentication.
-
-### 2.3 Brute-Force & Rate Limiting
-- Apply rate limiting at the API layer (e.g., using `express-rate-limit` or Next.js middleware) on `/api/auth` to throttle repeated login attempts.
-- Introduce exponential backoff or temporary lockout after N failed attempts.
-
-### 2.4 Role-Based Access Control (Future)
-- Define user roles in your database model (e.g., `role = 'user' | 'admin'`).
-- Enforce server-side authorization checks in every protected route (e.g., in `dashboard/layout.tsx` loader functions).
+### 2.2 Session Security
+- Protect against Session Fixation:
+  • Regenerate tokens on login.  
+- Secure Storage:
+  • Prefer HttpOnly & Secure cookies over LocalStorage for tokens to mitigate XSS.  
+  • If LocalStorage is used, encrypt tokens or sensitive data using the Web Crypto API.  
 
 ---
 
-## 3. Input Handling & Processing
+## 3. Input Handling & Data Validation
 
-### 3.1 Validate & Sanitize All Inputs
-- On **client** (`sign-up/page.tsx`, `sign-in/page.tsx`): perform basic format checks (email regex, password length).
-- On **server** (`/app/api/auth/route.ts`): re-validate inputs with a schema validator (e.g., `zod`, `Joi`).
-- Reject or sanitize any unexpected fields to prevent injection attacks.
+### 3.1 Client-Side & Server-Side Validation
+- Never trust client input alone; replicate all checks in your API or service layer.  
+- Use a schema validation library (e.g., Zod, Yup) for:
+  • Student and criteria CRUD payloads.  
+  • Evaluation scores and weight assignments.  
 
-### 3.2 Prevent Injection
-- If you introduce a database later, always use parameterized queries or an ORM (e.g., Prisma) rather than string concatenation.
-- Avoid dynamic `eval()` or template rendering with unsanitized user input.
-
-### 3.3 Safe Redirects
-- When redirecting after login or logout, validate the target against an allow-list to prevent open redirects.
+### 3.2 Prevent XSS & Injection
+- Content-Security-Policy (CSP):
+  • Restrict scripts/styles to your origin and approved CDNs.  
+  • Disallow `unsafe-inline` and `eval()`.  
+- Output Encoding:
+  • Escape user-supplied strings in JSX.  
+- Sanitize Rich Text (if used) with a library like DOMPurify.  
+  
+### 3.3 File Uploads & Exports
+- If file upload is added in future:
+  • Validate MIME types & file extensions.  
+  • Scan for malware or reject executable content.  
+- Exported PDFs/Excel:
+  • Ensure data is sanitized and only required fields are included.  
 
 ---
 
 ## 4. Data Protection & Privacy
 
-### 4.1 Encryption & Secrets
-- Enforce HTTPS/TLS 1.2+ for all front-end ↔ back-end communications.
-- Never commit secrets—use environment variables and a secrets manager (e.g., AWS Secrets Manager, Vault).
+### 4.1 Data at Rest
+- LocalStorage is not encrypted by default:
+  • Avoid storing highly sensitive PII or credentials.  
+  • Implement optional encryption modules to protect critical data.  
 
-### 4.2 Sensitive Data Handling
-- Do ​not​ log raw passwords, tokens, or PII in server logs. Mask or redact any user identifiers.
-- If storing PII in `data.json` or a future database, classify it and apply data retention policies.
+### 4.2 Data in Transit
+- Serve the SPA over HTTPS (TLS 1.2+).  
+- For any future API calls, enforce TLS, certificate pinning (mobile/web), and HSTS.  
 
----
-
-## 5. API & Service Security
-
-### 5.1 HTTPS Enforcement
-- In production, redirect all HTTP traffic to HTTPS (e.g., via Vercel’s redirect rules or custom middleware).
-
-### 5.2 CORS
-- Configure `next.config.js` or API middleware to allow **only** your front-end origin (e.g., `https://your-domain.com`).
-
-### 5.3 API Versioning & Minimal Exposure
-- Version your API routes (e.g., `/api/v1/auth`) to handle future changes without breaking clients.
-- Return only necessary fields in JSON responses; avoid leaking internal server paths or stack traces.
+### 4.3 Secrets Management
+- Do not hard-code keys/secrets in source code.  
+- Use environment variables secured by the build pipeline and avoid exposing them in the client bundle.  
 
 ---
 
-## 6. Web Application Security Hygiene
+## 5. Web Application Security Hygiene
 
-### 6.1 CSRF Protection
-- Use anti-CSRF tokens for any state-changing API calls. Integrate Next.js CSRF middleware or implement synchronizer tokens stored in cookies.
+### 5.1 Security Headers
+- HTTP Strict Transport Security (HSTS)
+- X-Content-Type-Options: `nosniff`
+- X-Frame-Options: `DENY` or CSP `frame-ancestors 'none'`
+- Referrer-Policy: `no-referrer-when-downgrade` or stricter
+- Set cookies with `HttpOnly`, `Secure`, `SameSite=Strict`
 
-### 6.2 Security Headers
-- In `next.config.js` (or a custom server), add these headers:
-  - `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload`
-  - `X-Content-Type-Options: nosniff`
-  - `X-Frame-Options: DENY`
-  - `Referrer-Policy: no-referrer-when-downgrade`
-  - `Content-Security-Policy`: restrict script/style/src to self and trusted CDNs.
+### 5.2 CSRF Protection
+- For future server-side POST/PUT/DELETE endpoints, implement anti-CSRF tokens and validate them server-side.  
 
-### 6.3 Secure Cookies
-- Set `Secure`, `HttpOnly`, `SameSite=Strict` on all cookies. Avoid storing sensitive data in `localStorage`.
-
-### 6.4 Prevent XSS
-- Escape or encode all user-supplied data in React templates. Avoid `dangerouslySetInnerHTML` unless content is sanitized.
+### 5.3 Build & Deployment
+- Disable React DevTools in production.  
+- Strip all console logs and debug code.  
+- Enable source-map exclusion for production bundles.  
 
 ---
 
-## 7. Infrastructure & Configuration Management
+## 6. Dependency & Supply Chain Management
 
-- Harden your hosting environment (e.g., Vercel/Netlify) by disabling unnecessary endpoints (GraphQL/GraphiQL playgrounds in production).
-- Rotate secrets and API keys regularly via your secrets manager.
-- Maintain minimal privileges: e.g., database accounts should only have read/write on required tables.
-- Keep Node.js, Next.js, and all system packages up to date.
-
----
-
-## 8. Dependency Management
-
-- Commit and maintain `package-lock.json` to guarantee reproducible builds.
-- Integrate a vulnerability scanner (e.g., GitHub Dependabot, Snyk) to monitor and alert on CVEs in dependencies.
-- Trim unused packages; each added library increases the attack surface.
+- Use package lockfiles (`package-lock.json` or `yarn.lock`) to fix versions.  
+- Audit dependencies regularly (`npm audit`, Snyk, Dependabot).  
+- Remove unused or deprecated libraries to reduce the attack surface.  
 
 ---
 
-Adherence to these guidelines will ensure that **codeguide-starter** remains secure, maintainable, and resilient as it evolves. Regularly review and update this document to reflect new threats and best practices.
+## 7. Infrastructure & CI/CD Security
+
+- Enforce least-privilege IAM roles for build/deploy pipelines.  
+- Store CI/CD secrets (API tokens, SSH keys) in secure vaults (e.g., GitHub Secrets, Vault).  
+- Run vulnerability scans and automated linting/security checks as part of pipelines.  
+- Use signed commits and enforce branch protection rules.  
+
+---
+
+## 8. Monitoring, Logging & Incident Response
+
+- Centralize client-side logging of critical errors with a secure monitoring service (e.g., Sentry).  
+- Redact PII from logs and error reports.  
+- Define an incident response process: detection, escalation, mitigation, and post-mortem.  
+
+---
+
+## 9. Future Enhancements & Migrations
+
+• **Backend API Migration**: When moving from LocalStorage to a server-side database, ensure all endpoints enforce authentication, authorization, and input validation server-side.  
+• **MFA Rollout**: Add multi-factor authentication for privileged operations.  
+• **End-to-End Encryption**: Protect data in transit and at rest for highly sensitive PII using client-side encryption before storage.  
+
+---
+
+Adherence to these guidelines will help secure the DSS application against common threats and build a resilient, maintainable system by design. Regularly review and update this document as the project evolves and new risks emerge.
