@@ -1,117 +1,86 @@
-# Project Requirements Document: codeguide-starter
-
----
+# Project Requirements Document: Decision Support System for SD Islam Al Fatiha
 
 ## 1. Project Overview
 
-The **codeguide-starter** project is a boilerplate web application that provides a ready-made foundation for any web project requiring secure user authentication and a post-login dashboard. It sets up the common building blocks—sign-up and sign-in pages, API routes to handle registration and login, and a simple dashboard interface driven by static data. By delivering this skeleton, it accelerates development time and ensures best practices are in place from day one.
+This project is a lightweight, single-page Decision Support System (DSS) built with Vite, React, and TypeScript. It helps school administrators and teachers (Gurus) manage student data, define evaluation criteria, carry out assessments using a Simple Additive Weighting (SAW) algorithm, and export the results as PDF or Excel. By leveraging a proven Next.js starter template for architecture, UI components, and development patterns, the DSS focuses on client-side simplicity while maintaining clear separation of concerns.
 
-This starter kit is being built to solve the friction developers face when setting up repeated common tasks: credential handling, session management, page routing, and theming. Key objectives include: 1) delivering a fully working authentication flow (registration & login), 2) providing a gated dashboard area upon successful login, 3) establishing a clear, maintainable project structure using Next.js and TypeScript, and 4) demonstrating a clean theming approach with global and section-specific CSS. Success is measured by having an end-to-end login journey in under 200 lines of code and zero runtime type errors.
-
----
+We’re building this tool to streamline the evaluation process at SD Islam Al Fatiha. Instead of juggling spreadsheets or manual calculations, users get a consistent workflow: log in, manage students and criteria, run objective scoring, and instantly download reports. Success will be measured by ease of use (new users onboard in under 5 minutes), performance (page load under 2 seconds), and accuracy (unit-tested SAW algorithm). A future migration to a server-side database or containerized deployment should require minimal overhaul thanks to our clean modular design.
 
 ## 2. In-Scope vs. Out-of-Scope
 
-### In-Scope (Version 1)
-- User registration (sign-up) form with validation
-- User login (sign-in) form with validation
-- Next.js API routes under `/api/auth/route.ts` handling:
-  - Credential validation
-  - Password hashing (e.g., bcrypt)
-  - Session creation or JWT issuance
-- Protected dashboard pages under `/dashboard`:
-  - `layout.tsx` wrapping dashboard content
-  - `page.tsx` rendering static data from `data.json`
-- Global application layout in `/app/layout.tsx`
-- Basic styling via `globals.css` and `dashboard/theme.css`
-- TypeScript strict mode enabled
+**In-Scope (Version 1.0)**
+- Client-side authentication and role management (Admin, Guru) using a custom `useAuth.ts` hook with LocalStorage.
+- CRUD interfaces for students and evaluation criteria (`StudentManagement.tsx`, `CriteriaManagement.tsx`).
+- Evaluation screen (`Evaluation.tsx`) that runs the SAW algorithm (`utils/saw.ts`) to normalize, weight, and rank students.
+- Reporting view (`Reports.tsx`) with PDF export via `jsPDF` + `jsPDF-AutoTable` and Excel export via `XLSX`.
+- Responsive UI built with `shadcn/ui` components and Tailwind CSS, supporting light and dark themes via `next-themes`.
+- Client-side routing with React Router, including `ProtectedRoute` for role-based access control.
+- Centralized data layer in `services/storage.ts` abstracting all LocalStorage operations.
+- Basic unit tests for core logic (SAW algorithm) using Vitest.
 
-### Out-of-Scope (Later Phases)
-- Integration with a real database (PostgreSQL, MongoDB, etc.)
-- Advanced authentication flows (password reset, email verification, MFA)
-- Role-based access control (RBAC)
-- Multi-tenant or white-label theming
-- Unit, integration, or end-to-end testing suites
-- CI/CD pipeline and production deployment scripts
-
----
+**Out-of-Scope (Planned for Later Phases)**
+- Server-side API or database integration (PostgreSQL, Drizzle ORM).
+- Multi-tenant support or advanced user roles beyond Admin and Guru.
+- Real-time collaboration or notifications.
+- Mobile-specific optimizations (will rely on responsive design only).
+- Containerized deployment (Docker) and CI/CD pipelines.
 
 ## 3. User Flow
 
-A new visitor lands on the root URL and sees a welcome page with options to **Sign Up** or **Sign In**. If they choose Sign Up, they fill in their email, password, and hit “Create Account.” The form submits to `/api/auth/route.ts`, which hashes the password, creates a new user session or token, and redirects them to the dashboard. If any input is invalid, an inline error message explains the issue (e.g., “Password too short”).
+A new Guru or Admin navigates to the login page (`Login.tsx`). They enter their credentials, which are validated by the `useAuth.ts` hook. On successful sign-in, the user’s role and session data are stored in LocalStorage. They are then redirected to the main dashboard, where a persistent sidebar and top header provide navigation links to Students, Criteria, Evaluation, and Reports.
 
-Once authenticated, the user is taken to the `/dashboard` route. Here they see a sidebar or header defined by `dashboard/layout.tsx`, and the main panel pulls in static data from `data.json`. They can log out (if that control is present), but otherwise their entire session is managed by server-side cookies or tokens. Returning users go directly to Sign In, submit credentials, and upon success they land back on `/dashboard`. Any unauthorized access to `/dashboard` redirects back to Sign In.
-
----
+From the dashboard, the user selects “Student Management” to add, edit, or remove students. They then move to “Criteria Management” to define or adjust evaluation criteria. Next, they head to “Evaluation,” select a batch of students, input scores per criterion, and click “Calculate.” The SAW algorithm runs in `utils/saw.ts`, updates rankings via `services/storage.ts`, and displays results in a data table. Finally, the user goes to “Reports” to view the ranked list and exports it as a PDF or Excel file. Throughout, `ProtectedRoute` ensures only authorized roles can access each view, and a theme toggle in the header switches between light and dark modes.
 
 ## 4. Core Features
 
-- **Sign-Up Page (`/app/sign-up/page.tsx`)**: Form fields for email & password, client-side validation, POST to `/api/auth`.
-- **Sign-In Page (`/app/sign-in/page.tsx`)**: Form fields for email & password, client-side validation, POST to `/api/auth`.
-- **Authentication API (`/app/api/auth/route.ts`)**: Handles both registration and login based on HTTP method, integrates password hashing (bcrypt) and session or JWT logic.
-- **Global Layout (`/app/layout.tsx` + `globals.css`)**: Shared header, footer, and CSS resets across all pages.
-- **Dashboard Layout (`/app/dashboard/layout.tsx` + `dashboard/theme.css`)**: Sidebar or top nav for authenticated flows, section-specific styling.
-- **Dashboard Page (`/app/dashboard/page.tsx`)**: Reads `data.json`, renders it as cards or tables.
-- **Static Data Source (`/app/dashboard/data.json`)**: Example dataset to demo dynamic rendering.
-- **TypeScript Configuration**: `tsconfig.json` with strict mode and path aliases (if any).
-
----
+- **Authentication & Authorization**: Client-side login/logout, session persistence, role-based route guarding.  
+- **Data Persistence Layer**: `services/storage.ts` handles all LocalStorage reads/writes for students, criteria, and results.  
+- **Student & Criteria Management**: CRUD forms and data tables for managing student lists and evaluation criteria.  
+- **SAW Algorithm Engine**: Normalization, weighted score computation, and ranking in `utils/saw.ts`, backed by unit tests.  
+- **Reporting & Exports**: PDF generation (`jsPDF` + `jsPDF-AutoTable`) and Excel workbook creation (`XLSX`).  
+- **Responsive UI & Theming**: Tailwind CSS + `shadcn/ui` components, dark mode via `next-themes`.  
+- **Routing & Navigation**: React Router with protected routes and a consistent sidebar/header layout.  
+- **State Management**: Optional use of Zustand for shared state across components (students, criteria, theme).  
 
 ## 5. Tech Stack & Tools
 
-- **Framework**: Next.js (App Router) for file-based routing, SSR/SSG, and API routes.
-- **Language**: TypeScript for type safety.
-- **UI Library**: React 18 for component-based UI.
-- **Styling**: Plain CSS via `globals.css` (global reset) and `theme.css` (sectional styling). Can easily migrate to CSS Modules or Tailwind in the future.
-- **Backend**: Node.js runtime provided by Next.js API routes.
-- **Password Hashing**: bcrypt (npm package).
-- **Session/JWT**: NextAuth.js or custom JWT logic (to be decided in implementation).
-- **IDE & Dev Tools**: VS Code with ESLint, Prettier extensions. Optionally, Cursor.ai for AI-assisted coding.
-
----
+- Frontend: Vite 5, React 18, TypeScript 5
+- UI: `shadcn/ui` component library, Tailwind CSS, `next-themes` for dark mode
+- Routing: React Router v6
+- Storage: Browser LocalStorage abstracted by `services/storage.ts`
+- State Management: Zustand (optional, for cross-component state)
+- Algorithm: Custom SAW implementation in `utils/saw.ts`
+- Reporting: `jsPDF`, `jsPDF-AutoTable`, `XLSX`
+- Testing: Vitest for unit tests, React Testing Library for component checks
+- Linting & Formatting: ESLint, Prettier, TypeScript strict mode
+- Version Control: Git
 
 ## 6. Non-Functional Requirements
 
-- **Performance**: Initial page load under 200 ms on a standard broadband connection. API responses under 300 ms.
-- **Security**:
-  - HTTPS only in production.
-  - Proper CORS, CSRF protection for API routes.
-  - Secure password storage (bcrypt with salt).
-  - No credentials or secrets checked into version control.
-- **Scalability**: Structure must support adding database integration, caching layers, and advanced auth flows without rewiring core app.
-- **Usability**: Forms should give real-time feedback on invalid input. Layout must be responsive (mobile > 320 px).
-- **Maintainability**: Code must adhere to TypeScript strict mode. Linting & formatting enforced by ESLint/Prettier.
-
----
+- **Performance**: Initial load under 2 seconds on modern browsers; transitions under 200 ms.  
+- **Responsiveness**: Fully responsive from 320px (mobile) to 1920px (desktop).  
+- **Accessibility**: Follow WCAG 2.1 AA standards; use semantic HTML and `aria-` attributes.  
+- **Security**: Protect routes with `ProtectedRoute`; sanitize all user inputs; clear session on logout.  
+- **Reliability**: Data layer should handle LocalStorage failures gracefully (e.g., quota exceeded).  
+- **Maintainability**: Clear code organization, type-safe patterns, and modular structure to ease future migrations.  
 
 ## 7. Constraints & Assumptions
 
-- **No Database**: Dashboard uses only `data.json`; real database integration is deferred.
-- **Node Version**: Requires Node.js >= 14.
-- **Next.js Version**: Built on Next.js 13+ App Router.
-- **Authentication**: Assumes availability of bcrypt or NextAuth.js at implementation time.
-- **Hosting**: Targets serverless or Node.js-capable hosting (e.g., Vercel, Netlify).
-- **Browser Support**: Modern evergreen browsers; no IE11 support required.
-
----
+- The app is purely client-side; no backend or network calls are required in V1.  
+- LocalStorage is available and has sufficient capacity for the expected data volume (hundreds of records).  
+- User roles are limited to two: Admin and Guru.  
+- Browser support: latest versions of Chrome, Firefox, Edge, and Safari.  
+- Future server migration is assumed to reuse the same service and utility layers with minimal changes.  
 
 ## 8. Known Issues & Potential Pitfalls
 
-- **Static Data Limitation**: `data.json` is only for demo. A real API or database will be needed to avoid stale data.
-  *Mitigation*: Define a clear interface for data fetching so swapping to a live endpoint is trivial.
-
-- **Global CSS Conflicts**: Using global styles can lead to unintended overrides.
-  *Mitigation*: Plan to migrate to CSS Modules or utility-first CSS in Phase 2.
-
-- **API Route Ambiguity**: Single `/api/auth/route.ts` handling both sign-up and sign-in could get complex.
-  *Mitigation*: Clearly branch on HTTP method (`POST /register` vs. `POST /login`) or split into separate files.
-
-- **Lack of Testing**: No test suite means regressions can slip in.
-  *Mitigation*: Build a minimal Jest + React Testing Library setup in an early iteration.
-
-- **Error Handling Gaps**: Client and server must handle edge cases (network failures, malformed input).
-  *Mitigation*: Define a standard error response schema and show user-friendly messages.
+- **LocalStorage Limits**: Storing large datasets can hit browser quotas. Mitigation: show clear error messages and fallback to CSV exports.  
+- **Data Consistency**: Concurrent edits in separate tabs may overwrite data. Mitigation: implement `storage` event listeners to sync state.  
+- **Algorithm Edge Cases**: Zero or identical weights can skew rankings. Mitigation: validate criteria weights and provide user warnings.  
+- **Routing Race Conditions**: Redirect loops if `useAuth` initialization lags. Mitigation: add a loading state during auth check.  
+- **Theme Flash**: FOUC (flash of unstyled content) when switching themes. Mitigation: persist theme in LocalStorage and hydrate on first render.  
+- **Cross-Browser Bugs**: PDF rendering differences across OSes. Mitigation: test exports on target platforms and adjust `jsPDF` settings accordingly.
 
 ---
 
-This PRD should serve as the single source of truth for the AI model or any developer generating the next set of technical documents: Tech Stack Doc, Frontend Guidelines, Backend Structure, App Flow, File Structure, and IDE Rules. It contains all functional and non-functional requirements with no ambiguity, enabling seamless downstream development.
+This PRD outlines the full scope, user experience, technical foundations, and potential challenges for the Decision Support System. It should provide a clear blueprint for each subsequent technical document, ensuring consistency and eliminating guesswork throughout the project lifecycle.
